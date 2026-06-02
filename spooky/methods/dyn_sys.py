@@ -191,8 +191,13 @@ class DynSys():
 
         return eigval_H, eigvec_H, Q
 
-    def lyapunov_exponents(self, fields, T, n, nsteps, ep0=1e-7, sx=None, b='random', return_hist=False,
-         start_step=0, U0=None, Q0=None, le_sum0=None, checkpoint_file=None, checkpoint_every=None):
+    def lyapunov_exponents(
+        self, fields, T, n, nsteps, ep0=1e-7, sx=None, b='random',
+        return_hist=False,
+        resume=True,
+        checkpoint_file=None,
+        checkpoint_every=None
+        ):
         ''' Computes Lyapunov exponents and Kaplan–Yorke dimension via QR iteration.
 
         This method implements the Benettin algorithm for estimating finite-time
@@ -218,14 +223,6 @@ class DynSys():
             Initial perturbation seed ('random', 'U', 'phases', or user-defined array).
         return_hist : bool, optional
             If True, also returns the history of Lyapunov exponents at each step.
-        start_step : int, optional
-            Step number to start from (for restarts). Default is 0.
-        U0 : np.ndarray, optional
-            Initial state vector (flattened). If None, it will be initialized from fields.
-        Q0 : np.ndarray, shape (len(U), n), optional
-            Initial orthonormal basis for perturbations. If None, it will be initialized randomly.
-        le_sum0 : np.ndarray, shape (n,), optional
-            Initial cumulative sum of log norms. If None, it will be initialized to zeros.
 
         Returns
         -------
@@ -241,32 +238,40 @@ class DynSys():
         # --- INITIAL STATE OR RESTART ---------------------
         # --------------------------------------------------
 
-        if U0 is not None:
-            U = U0.copy()
+        start_step = 0
+        times = np.arange(1, nsteps + 1) * T
+        if resume:
+            # Restarting from checkpoint
+            if checkpoint_file is None:
+                raise ValueError("resume=True requires checkpoint_file.")
+
+            if os.path.exists(checkpoint_file):
+                ckpt = np.load(checkpoint_file, allow_pickle=True)
+
+                start_step = int(ckpt["step"])
+                U = ckpt["U"]
+                Q = ckpt["Q"]
+                le_sum = ckpt["le_sum"]
+
+                if "le_hist" in ckpt.files and return_hist:
+                    le_hist = ckpt["le_hist"]
+                    if le_hist.shape[1] != n:
+                        raise ValueError(f"Checkpoint le_hist n_lyap {le_hist.shape[1]} does not match expected {n}.")    
+                    if le_hist.shape[0] < nsteps:
+                        # Add padding if checkpoint has fewer steps than requested
+                        le_hist = np.pad(le_hist, ((0, nsteps - le_hist.shape[0]), (0, 0)), mode='constant')
+                    elif le_hist.shape[0] > nsteps:
+                        le_hist = le_hist[:nsteps, :]
+
+            else:
+                raise FileNotFoundError(
+                    f"resume=True but checkpoint file was not found: {checkpoint_file}"
+                )
+
         else:
+            # Initial run
             U = self.flatten(fields)
-
-        if le_sum0 is not None:
-            le_sum = le_sum0.copy()
-        else:
             le_sum = np.zeros(n)
-
-        def apply_J(U, dU, Uevol):
-            "Applies the finite-time tangent map DΦ_T(U) to perturbation dU using finite differences."
-            epsilon = ep0 * np.linalg.norm(U) / np.linalg.norm(dU)
-            U_pert = U + epsilon * dU
-            dUT_dU = self.evolve(U_pert, T) - Uevol
-            if sx is not None:
-                dUT_dU = self.translate(dUT_dU, sx)
-            return dUT_dU / epsilon
-
-        # --------------------------------------------------
-        # --- Initialize or Restore Q ----------------------
-        # --------------------------------------------------
-
-        if Q0 is not None:
-            Q = Q0.copy()
-        else:
             if isinstance(b, str):
                 if b == 'U':
                     b = U.copy()
@@ -277,6 +282,7 @@ class DynSys():
             elif not isinstance(b, np.ndarray):
                 raise ValueError("b must be 'U', 'random', 'phases', or ndarray.")
 
+            # Initialize Q
             Q = np.zeros((len(U), n))
             Q[:, 0] = b / np.linalg.norm(b)
             for i in range(1, n):
@@ -285,12 +291,17 @@ class DynSys():
                     q -= np.dot(Q[:, j], q) * Q[:, j]
                 Q[:, i] = q / np.linalg.norm(q)
 
-        # --------------------------------------------------
-        # --- History --------------------------------------
-        # --------------------------------------------------
+            if return_hist:
+                le_hist = np.zeros((nsteps, n))
 
-        if return_hist:
-            le_hist = np.zeros((nsteps, n))
+        def apply_J(U, dU, Uevol):
+            "Applies the finite-time tangent map DΦ_T(U) to perturbation dU using finite differences."
+            epsilon = ep0 * np.linalg.norm(U) / np.linalg.norm(dU)
+            U_pert = U + epsilon * dU
+            dUT_dU = self.evolve(U_pert, T) - Uevol
+            if sx is not None:
+                dUT_dU = self.translate(dUT_dU, sx)
+            return dUT_dU / epsilon
 
         # --------------------------------------------------
         # --- MAIN LOOP ------------------------------------
@@ -326,14 +337,32 @@ class DynSys():
 
             if checkpoint_file is not None and checkpoint_every is not None:
                 if (step + 1) % checkpoint_every == 0:
-                    np.savez(
-                        checkpoint_file,
+                    save_dict = dict(
                         step=step + 1,
                         U=U,
                         Q=Q,
                         le_sum=le_sum,
-                        le_hist=le_hist if return_hist else None
+                        times=times
                     )
+
+                    if return_hist:
+                        save_dict["le_hist"] = le_hist
+
+                    np.savez(checkpoint_file, **save_dict)
+
+        # Final checkpoint save after loop completion
+        if checkpoint_file is not None:
+            save_dict = dict(
+                step=nsteps,
+                U=U,
+                Q=Q,
+                le_sum=le_sum
+            )
+
+            if return_hist:
+                save_dict["le_hist"] = le_hist
+
+            np.savez(checkpoint_file, **save_dict)
 
         # --------------------------------------------------
         # --- FINAL RESULTS --------------------------------
@@ -371,30 +400,34 @@ class UPONewtonSolver(DynSys):
                  T: float | None,
                  sx: float | None,
                  Tconst: float = 1.0,
+                 N_newt: int = 200,
+                 N_gmres: int = 300,
+                 N_hook: int = 25,
+                 tol_newt: float = 1e-5,
+                 tol_gmres: float = 1e-3,
+                 tol_improve: float = 1e-3,
+                 tol_nudge: float = 1e-3,
+                 frac_nudge: float = 0.,
+                 restart_iN: int = 0,
                  eps0: float = 1e-7,
+                 mu0: float = 1e-3,
+                 mu_inc: float = 2.0,
+                 c: float = 0.5,
+                 reduc_reg: float = 0.5,
                  sp1: bool = False,
                  sp2: bool = False,
                  sp_dU: bool = False,
-                 save_outputs: str = 'none',
-                 save_balance: str = 'none',
-                 restart_iN: int = 0,
-                 N_newt: int = 200,
-                 N_gmres: int = 300,
-                 tol_gmres: float = 1e-3,
-                 N_hook: int = 25,
-                 c: float = 0.5,
-                 reduc_reg: float = 0.5,
-                 mu0: float = 1e-3,
-                 mu_inc: float = 2.0,
-                 tol_nudge: float = 1e-3,
-                 frac_nudge: float = 0.,
-                 tol_newt: float = 1e-5,
-                 tol_improve: float = 1e-3,
+                 save_outputs: str = 'all',
+                 save_balance: str = 'all',
+                 ostep: int = 1000,
+                 bstep: int = 1000,
+                 output_dir: str = 'output',
+                 balance_dir: str = 'balance',
                  newton_dir: str = 'newton',
                  gmres_dir: str = 'gmres',
-                 apply_A_dir: str = 'apply_A',
                  hookstep_dir: str = 'hookstep',
                  trust_region_dir: str = 'trust_region',
+                 apply_A_dir: str = 'apply_A',
                  converged_dir: str = 'converged'
                  ):
 
@@ -412,6 +445,8 @@ class UPONewtonSolver(DynSys):
         self.sp_dU = sp_dU
         self.save_outputs = save_outputs
         self.save_balance = save_balance
+        self.ostep = ostep
+        self.bstep = bstep
         
         # Solver hyperparameters
         self.restart_iN = restart_iN
@@ -429,12 +464,33 @@ class UPONewtonSolver(DynSys):
         self.tol_improve = tol_improve
         
         # Directories
+        self.output_dir = output_dir
+        self.balance_dir = balance_dir
         self.newton_dir = newton_dir
         self.gmres_dir = gmres_dir
         self.apply_A_dir = apply_A_dir
         self.hookstep_dir = hookstep_dir
         self.trust_region_dir = trust_region_dir
         self.converged_dir = converged_dir
+
+    def _evolve_path(self, base_dir, iN):
+        """Build the output/balance path for a given base directory and Newton iteration."""
+        path = base_dir
+        if iN is not None:
+            path = os.path.join(path, f"iN{iN:02}")
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _evolve_kwargs(self, save_out, save_bal, iN=None):
+        """Build keyword arguments for self.evolve with proper ostep/bstep and paths."""
+        kwargs = {}
+        if save_out:
+            kwargs['ostep'] = self.ostep
+            kwargs['opath'] = self._evolve_path(self.output_dir, iN)
+        if save_bal:
+            kwargs['bstep'] = self.bstep
+            kwargs['bpath'] = self._evolve_path(self.balance_dir, iN)
+        return kwargs
 
     def form_X(self, U, T, sx):
         X = np.copy(U)
@@ -487,7 +543,7 @@ class UPONewtonSolver(DynSys):
         U, T, sx = self.unpack_X(X)
         save_out = True if self.save_outputs == 'all' else False
         save_bal = True if self.save_balance == 'all' else False
-        UT = self.evolve(U, T, save_out, save_bal, iN=iN-1)
+        UT = self.evolve(U, T, **self._evolve_kwargs(save_out, save_bal, iN=iN-1))
 
         if self.sx is not None:
             UT = self.translate(UT, sx)
@@ -552,7 +608,7 @@ class UPONewtonSolver(DynSys):
             if (F_new < self.tol_newt) and ((F-F_new)/F < self.tol_improve):
                 save_out = True if self.save_outputs in ('all', 'last') else False
                 save_bal = True if self.save_balance in ('all', 'last') else False
-                UT = self.evolve(U, T, save_out, save_bal, iN=iN)
+                UT = self.evolve(U, T, **self._evolve_kwargs(save_out, save_bal, iN=iN))
                 if self.sx is not None:
                     UT = self.translate(UT, sx)
                 b = self.form_b(U, UT)
@@ -644,7 +700,7 @@ class UPONewtonSolver(DynSys):
         trust_region_path = self._get_path(self.trust_region_dir, 'trust_region_'+suffix, iA=iA)
 
         if gmres_path: print('iG, error', file=open(gmres_path, "w"))
-        if hook_path: print('iH, |F|, |F(x)+cAdx|, |F(x)+Adx|', file=open(hook_path, "w"))
+        if hook_path: print('iH, |F|, |F(x)+cAdx|', file=open(hook_path, "w"))
         if apply_A_path: print("|U|, |dU|, |dUT/dU|, |dU/dt|, |dUT/dT|, |dU/ds|, |dUT/ds|, t_proj, Tx_proj", file=open(apply_A_path, "w"))
         if trust_region_path: print("Delta, mu, |y|, cond(A)", file=open(trust_region_path, "w"))
 
@@ -686,6 +742,17 @@ class ArclengthNewtonSolver(UPONewtonSolver):
         self.norm_val = norm_val
         self.restart_iA = restart_iA
         self.N_arc = N_arc
+        self._current_iA = None
+
+    def _evolve_path(self, base_dir, iN):
+        """Build path with iA prefix for arclength continuation."""
+        path = base_dir
+        if self._current_iA is not None:
+            path = f"{path}{self._current_iA:02}"
+        if iN is not None:
+            path = os.path.join(path, f"iN{iN:02}")
+        os.makedirs(path, exist_ok=True)
+        return path
 
     def form_X(self, U, T=None, sx=None, lda=None):
         X = super().form_X(U, T, sx)
@@ -780,8 +847,11 @@ class ArclengthNewtonSolver(UPONewtonSolver):
     def update_A_arc(self, X, dX_dr, iN, iA: int | None):
         U, T, sx, lda = self.unpack_X(X)
         self.update_lda(lda)
+        self._current_iA = iA
 
-        UT = self.evolve(U, T, save=True, iN=iN-1, iA=iA)
+        save_out = True if self.save_outputs == 'all' else False
+        save_bal = True if self.save_balance == 'all' else False
+        UT = self.evolve(U, T, **self._evolve_kwargs(save_out, save_bal, iN=iN-1))
 
         if self.sx is not None:
             UT = self.translate(UT, sx)
@@ -858,7 +928,9 @@ class ArclengthNewtonSolver(UPONewtonSolver):
             U, T, sx, lda = self.unpack_X(X)
 
             if (F_new < self.tol_newt) and ((F - F_new) / F < self.tol_improve):
-                UT = self.evolve(U, T, save=True, iN=iN, iA=iA)
+                save_out = True if self.save_outputs in ('all', 'last') else False
+                save_bal = True if self.save_balance in ('all', 'last') else False
+                UT = self.evolve(U, T, **self._evolve_kwargs(save_out, save_bal, iN=iN))
                 if self.sx is not None:
                     UT = self.translate(UT, sx)
                     
