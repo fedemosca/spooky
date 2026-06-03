@@ -129,7 +129,9 @@ class DynSys():
         b: str or np.array, optional
             Initial guess for Arnoldi. Default is 'U'. Could also take in
             'random' or a np.array of the same size as U
-
+        test: bool, optional
+            If True, also returns Aev_r and Aev_i to check if returned eigenvectors satisfy Av=lambda v
+            
         Returns
         -------
         eigval_H: np.array of complex
@@ -194,7 +196,7 @@ class DynSys():
     def lyapunov_exponents(
         self, fields, T, n, nsteps, ep0=1e-7, sx=None, b='random',
         return_hist=False,
-        resume=True,
+        resume=False,
         checkpoint_file=None,
         checkpoint_every=None
         ):
@@ -221,8 +223,15 @@ class DynSys():
             Translation in x direction (for translationally invariant systems).
         b : str or np.ndarray, optional
             Initial perturbation seed ('random', 'U', 'phases', or user-defined array).
+            Ignored if restart=True.
         return_hist : bool, optional
             If True, also returns the history of Lyapunov exponents at each step.
+        resume : bool, optional
+            If True, attempts to resume from checkpoint_file if it exists. Default is False.
+        checkpoint_file : str or None, optional
+            Path to checkpoint file for saving and resuming. If None, no checkpointing is done.
+        checkpoint_every : int or None, optional
+            If not None, saves a checkpoint every this many steps. Ignored if checkpoint_file is None.
 
         Returns
         -------
@@ -371,6 +380,7 @@ class DynSys():
         lyap_exponents = le_sum / (nsteps * T)
         lyap_exponents = np.sort(lyap_exponents)[::-1]
 
+        # --- Kaplan–Yorke dimension ---
         S = np.cumsum(lyap_exponents)
         positive = np.where(S >= 0)[0]
         if len(positive) > 0:
@@ -493,6 +503,7 @@ class UPONewtonSolver(DynSys):
         return kwargs
 
     def form_X(self, U, T, sx):
+        """Pack U, T, sx into a single state vector X."""
         X = np.copy(U)
         if self.T is not None:
             X = np.append(X, T)
@@ -501,6 +512,7 @@ class UPONewtonSolver(DynSys):
         return X
 
     def unpack_X(self, X):
+        """Extract U, T, sx from state vector X."""
         if not self.remove_boundary:
             dim_U = self.grid.N * self.solver.num_fields
         else:
@@ -520,6 +532,7 @@ class UPONewtonSolver(DynSys):
         return U, T, sx
 
     def form_b(self, U, UT):
+        """Form Newton residual b = U - U(T), appending zeros for T and sx constraints."""
         b = U - UT
         if self.sx is not None:
             b = np.append(b, 0.)
@@ -528,9 +541,11 @@ class UPONewtonSolver(DynSys):
         return b
 
     def norm(self, U):
+        """Return L2 norm of U."""
         return np.linalg.norm(U)
 
     def apply_proj(self, U, dU, sp):
+        """Return U + dU, optionally applying solenoidal projection to dU or the sum."""
         if not sp:
             return U+dU
         if self.sp_dU:
@@ -540,6 +555,7 @@ class UPONewtonSolver(DynSys):
             return self.sol_project(U+dU)
 
     def update_A(self, X, iN):
+        """Evolve trajectory from X and build the linear operator apply_A for GMRES."""
         U, T, sx = self.unpack_X(X)
         save_out = True if self.save_outputs == 'all' else False
         save_bal = True if self.save_balance == 'all' else False
@@ -561,6 +577,7 @@ class UPONewtonSolver(DynSys):
             dUT_dT = dU_dt = np.zeros_like(U)
 
         def apply_A(dX):
+            ''' Applies A (extended Jacobian) to vector X^t  '''
             dU, dT, ds = self.unpack_X(dX)
             epsilon = self.eps0*self.norm(U)/self.norm(dU)
             U_pert = self.apply_proj(U, epsilon*dU, self.sp1)
@@ -586,6 +603,7 @@ class UPONewtonSolver(DynSys):
         return apply_A, UT
 
     def run_newton(self, X):
+        """Run Newton-Krylov iterations starting from state X until convergence."""
         if self.restart_iN == 0:
             self.write_header_newton()
 
@@ -617,6 +635,7 @@ class UPONewtonSolver(DynSys):
                 break
 
     def hookstep(self, X, H, beta, Q, iN):
+        """Perform trust-region hookstep update; shrinks step until residual improvement is linear."""
         U, T, sx = self.unpack_X(X)
         y = backsub(H, beta)
         Delta = self.norm(y)
@@ -650,6 +669,7 @@ class UPONewtonSolver(DynSys):
         return X_new, F_new, UT
 
     def trust_region_function(self, H, beta, iN, y0, iA: int | None = None):
+        """Return a closure that solves the trust-region subproblem (A + mu*I)y = b."""
         R = H
         A_ = R.T @ R
         b = R.T @ beta
@@ -755,17 +775,20 @@ class ArclengthNewtonSolver(UPONewtonSolver):
         return path
 
     def form_X(self, U, T=None, sx=None, lda=None):
+        """Pack U, T, sx, lda into a single state vector X."""
         X = super().form_X(U, T, sx)
         if lda is not None:
             X = np.append(X, lda)
         return X
 
     def unpack_X(self, X):
+        """Extract U, T, sx, lda from state vector X."""
         U, T, sx = super().unpack_X(X)
         lda = X[-1]
         return U, T, sx, lda
 
     def hookstep(self, X, H, beta, Q, iN, arclength: dict):
+        """Perform hookstep update with the arclength constraint included in the residual."""
         U, T, sx, lda = self.unpack_X(X)
         y = backsub(H, beta)
         Delta = self.norm(y)
@@ -834,6 +857,7 @@ class ArclengthNewtonSolver(UPONewtonSolver):
             print(content, file=open(path, "a"))
 
     def update_lda(self, lda):
+        '''Updates lambda parameter in solver. norm: normalization parameter'''
         if self.solver.solver == 'KolmogorovFlow':
             self.solver.pm.nu = 1 / lda  # Assigning directly to solver's pm since self.pm is removed
         elif self.solver.solver == 'BOUSS':
@@ -842,9 +866,11 @@ class ArclengthNewtonSolver(UPONewtonSolver):
             raise Exception('Arclength only implemented for Kolmogorov and BOUSS')
 
     def N_constraint(self, X, dX_dr, dr, X1):
+        """Evaluate arclength constraint N(X) = dX_dr . (X - X1) - dr * alpha^2."""
         return np.dot(dX_dr, (X - X1)) - dr * self.alpha**2
 
     def update_A_arc(self, X, dX_dr, iN, iA: int | None):
+        """Evolve trajectory and build apply_A including the lda column for arclength continuation."""
         U, T, sx, lda = self.unpack_X(X)
         self.update_lda(lda)
         self._current_iA = iA
@@ -905,6 +931,7 @@ class ArclengthNewtonSolver(UPONewtonSolver):
         return apply_A, UT
 
     def run_arclength(self, X0, X1, X_restart=None, iA: int | None = None):
+        """Run Newton iterations for one arclength step from X0 to a new solution near X1."""
         dr = np.linalg.norm(X1 - X0)
         dX_dr = (X1 - X0) / dr
         X = X_restart if X_restart is not None else X1
@@ -946,6 +973,7 @@ class ArclengthNewtonSolver(UPONewtonSolver):
                 return X
 
     def run_arc_auto(self, X0, X1, X_restart=None):
+        """Automate successive arclength continuation steps, using each converged solution as the next predictor."""
         start_iA = max(2, self.restart_iA)
 
         for iA in range(start_iA, self.N_arc):
@@ -958,6 +986,7 @@ class ArclengthNewtonSolver(UPONewtonSolver):
             X_restart = None
 
     def save_converged(self, X, iA):
+        """Save converged solution fields and scalar parameters to the converged directory."""
         U, T, sx, lda = self.unpack_X(X)
         path = self._get_path(self.converged_dir, "solver.txt", iA=iA)
         os.makedirs(os.path.dirname(path), exist_ok=True)
