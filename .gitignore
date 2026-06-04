@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Environment
+.env
+.venv
+env/
+venv/
+
+# pytest
+.pytest_cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~

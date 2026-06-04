@@ -9,12 +9,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 pip install -e .
 ```
 
+**Run tests:**
+```bash
+pytest tests/
+pytest tests/test_grid.py                                                 # grid only
+pytest tests/test_grid.py::TestGrid2D::test_inc_proj_divergence_free     # single test
+```
+
 **Run an example:**
 ```bash
 cd examples/kolmogorov && python time_marching.py
 ```
-
-There are no automated tests or lint configuration in this repo.
 
 ## Architecture
 
