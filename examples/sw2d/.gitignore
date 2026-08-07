@@ -1,0 +1,4 @@
+# Simulation outputs - regenerable with time_marching.py
+*.npy
+*.png
+balance.dat
