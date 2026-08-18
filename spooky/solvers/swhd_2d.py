@@ -51,8 +51,17 @@ class SWHD_2D(PseudoSpectral):
     def update_hb(self, hb):
         self.hb = hb
 
-    @apply_jit
     def rkstep(self, fields, prev, oo, dt):
+        ''' Passes hb as a traced argument.
+
+        Under jit `self` is a static argument, so any attribute read inside the compiled
+        function is baked in at trace time and never refreshed: a loop calling update_hb()
+        between evolve() calls would silently keep the first topography.
+        '''
+        return self._rkstep(fields, prev, oo, dt, self.hb)
+
+    @apply_jit
+    def _rkstep(self, fields, prev, oo, dt, hb):
         # Unpack
         fu  = fields[0]
         fup = prev[0]
@@ -62,8 +71,6 @@ class SWHD_2D(PseudoSpectral):
 
         fh  = fields[2]
         fhp = prev[2]
-
-        hb = self.hb
 
         # Non-linear term
         uu = self.grid.inverse(fu)

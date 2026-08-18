@@ -6,8 +6,14 @@ BACKEND = os.environ.get('NUMPY_BACKEND', 'numpy').lower()
 # --- Backend Import and Aliasing ---
 if BACKEND == 'jax':
     try:
+        # JAX defaults to float32. The solvers are undamped, so grid-scale roundoff is
+        # never dissipated and single precision corrupts long runs. Must be set before
+        # jax is imported. Opt out with JAX_ENABLE_X64=0.
+        x64 = os.environ.setdefault('JAX_ENABLE_X64', '1') not in ('0', 'false', 'False')
+        import jax
+        jax.config.update('jax_enable_x64', x64)
         import jax.numpy as xnp
-        print("Using JAX backend.")
+        print(f"Using JAX backend (float64: {x64}).")
         JAX_ENABLED = True
     except ImportError:
         print("JAX requested but not installed. Falling back to NumPy.")
