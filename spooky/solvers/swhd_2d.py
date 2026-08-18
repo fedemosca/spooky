@@ -96,12 +96,12 @@ class SWHD_2D(PseudoSpectral):
         fv = fvp + (dt/oo) * (-fv_grad_v - self.pm.g*fhy)
         fh = fhp + (dt/oo) * (-fu_h_hb_x - fv_h_hb_y)
 
-        # de-aliasing
-        fu = index_update(fu, self.grid.zero_mode, 0.0)
+        # de-aliasing. The zero mode is kept for all three fields: unlike Kolmogorov
+        # flow, a uniform velocity shift is not a symmetry here (topography breaks
+        # translation invariance, and on a flat bottom <grad h> = 0 leaves the mean
+        # obeying d<u>/dt = -<u.grad u>), so the mean velocity is dynamical, not gauge.
         fu = index_update(fu, self.grid.dealias_modes, 0.0)
-        fv = index_update(fv, self.grid.zero_mode, 0.0)
         fv = index_update(fv, self.grid.dealias_modes, 0.0)
-        # zero mode for h is not null
         fh = index_update(fh, self.grid.dealias_modes, 0.0)
 
         return [fu, fv, fh]
@@ -180,8 +180,27 @@ class SWHD_2D(PseudoSpectral):
             np.save(f'{self.pm.out_path}/vvms', self.vvs)
             np.save(f'{self.pm.out_path}/hhms', self.hhs)
 
+    def diagnostics(self, fields) -> tuple:
+        ''' Domain-averaged mass and energy, from fields in Fourier space.
+
+        For the shallow water system the conserved quantities are the water column
+        M = <h-hb> and the energy E = <(h-hb)|u|^2>/2 + g<h^2>/2, whose kinetic and
+        potential parts are returned separately since topography exchanges one for the
+        other while their sum is invariant. Note grid.energy is not applicable here: it
+        weights u and h equally and carries no factor of g.
+        '''
+        uu = self.grid.inverse(fields[0])
+        vv = self.grid.inverse(fields[1])
+        hh = self.grid.inverse(fields[2])
+
+        hcol = hh - self.hb
+        mass = xnp.mean(hcol)
+        ekin = 0.5 * xnp.mean(hcol * (uu**2 + vv**2))
+        epot = 0.5 * self.pm.g * xnp.mean(hh**2)
+        return mass, ekin, epot
+
     def balance(self, fields, step, bpath):
-        eng = self.grid.energy(fields)
-        bal = [f'{self.pm.dt*step:.4e}', f'{eng:.6e}']
+        mass, ekin, epot = self.diagnostics(fields)
+        bal = [f'{self.pm.dt*step:.4e}', f'{mass:.6e}', f'{ekin:.6e}', f'{epot:.6e}']
         with open(f'{self.pm.out_path}/balance.dat', 'a') as output:
             print(*bal, file=output)
