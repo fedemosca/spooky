@@ -26,9 +26,12 @@ np.save(f'{pm.hb_path}/hb.npy', hb)
 solver.update_hb(hb)
 solver.update_true_hb()
 
-# Initial conditions: super-Gaussian pulse travelling in +x
-h0 = pm.A*np.exp(-((Xs-pm.x0)/pm.s)**pm.n)
-u0 = pm.U*np.exp(-((Xs-pm.x0)/pm.s)**pm.n)
+# Initial conditions: super-Gaussian pulse travelling in +x. h is the free surface, so
+# it sits on top of the rest height: without that offset h-hb is negative over the bump,
+# the water column is unphysical and the run turns into NaNs.
+pulse = np.exp(-((Xs-pm.x0)/pm.s)**pm.n)
+h0 = pm.h_rest + pm.A*pulse
+u0 = pm.U*pulse
 v0 = np.zeros_like(Xs)
 fields = [u0, v0, h0]
 

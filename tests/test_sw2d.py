@@ -180,6 +180,21 @@ def test_mean_velocity_is_not_removed():
     np.testing.assert_allclose(np.mean(fields[0]), umean0, rtol=1e-3)
 
 
+def test_balance_file_is_truncated_between_runs(tmp_path):
+    """Each run must start balance.dat fresh.
+
+    Opening in append mode concatenates successive runs into one file, which then reads
+    as a time series that jumps backwards partway through.
+    """
+    grid, solver = _make_solver(HB_HEIGHT)
+    solver.pm.out_path = str(tmp_path)
+    for _ in range(2):
+        solver.evolve(_pulse_ic(grid), T=10*DT, bstep=1, ostep=None, bpath=str(tmp_path))
+
+    times = np.atleast_2d(np.loadtxt(tmp_path / 'balance.dat'))[:, 0]
+    assert np.all(np.diff(times) >= 0), f'time runs backwards: {times}'
+
+
 # ── Regression ────────────────────────────────────────────────────────────────
 
 def test_regression():

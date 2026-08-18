@@ -202,5 +202,8 @@ class SWHD_2D(PseudoSpectral):
     def balance(self, fields, step, bpath):
         mass, ekin, epot = self.diagnostics(fields)
         bal = [f'{self.pm.dt*step:.4e}', f'{mass:.6e}', f'{ekin:.6e}', f'{epot:.6e}']
-        with open(f'{self.pm.out_path}/balance.dat', 'a') as output:
+        # Truncate on the first step: appending would silently concatenate successive
+        # runs into one file, which then reads as a time series that jumps backwards.
+        mode = 'w' if step == 0 else 'a'
+        with open(f'{self.pm.out_path}/balance.dat', mode) as output:
             print(*bal, file=output)
