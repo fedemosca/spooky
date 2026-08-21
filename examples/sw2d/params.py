@@ -21,7 +21,9 @@ h_rest = 2.0         # rest water height (cm)
 
 # Bottom topography (Gaussian bump)
 H0 = 1.0             # bump height, half the rest depth
-R = 2.5              # bump width: exp(-r^2/R^2) is 5 cm across at 1/e, as in the tank
+R = 1.25             # the tank bump is 1 cm tall on a circular base 5 cm across, so it
+                     # vanishes at r = 2.5 cm. A Gaussian never does, so R is set to put
+                     # that base at 2R, where exp(-r^2/R^2) has fallen to 1.8% of H0.
 xb = 40.0
 yb = Ly/2
 
