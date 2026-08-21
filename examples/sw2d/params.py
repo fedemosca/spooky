@@ -32,8 +32,11 @@ yb = Ly/2
 # a dominant wavelength of 23 cm. Note this is an intermediate-depth wave, not a strictly
 # shallow one: k*h = 0.53, and the shallow water phase speed is 5.5% high against the
 # exact linear dispersion relation. That error is the dominant modelling limitation here
-# and should be quoted alongside any comparison with experiment. Reaching 1% would need
-# s > 8 cm, whose 29 cm span no longer fits the 30 x 30 cm measurement window.
+# and should be quoted alongside any comparison with experiment. A wider pulse would
+# reduce it -- 2.3% at s=5, 1.0% at s=8, both still fitting the 30 cm window -- but it
+# also weakens the measurement: the 5 cm bump is already well below the wavelength, so
+# lengthening the wave cuts the deformation being measured. At s=3 the peak leaves the
+# bump at 109% of A; widening buys accuracy that the experiment cannot resolve.
 A = 0.25             # height amplitude (cm)
 s = 3.0              # half-length: the surface hump is ~3s = 9 cm across
 n = 2                # exponent
