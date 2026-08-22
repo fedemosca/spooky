@@ -27,6 +27,12 @@ else:
 
 def _jax_index_update(arr, indices, values=0.0):
     """JAX-specific update (immutable, array.at)."""
+    # A full-shape boolean mask goes through 'where' rather than '.at'. JAX has no
+    # boolean indexing, so '.at[mask]' materializes the masked coordinates and emits a
+    # scatter over them: on GPU that costs seconds per call for a dealiasing mask, and
+    # dominates everything else in an rkstep. 'where' is the same operation as a select.
+    if getattr(indices, 'dtype', None) == bool and indices.shape == arr.shape:
+        return xnp.where(indices, values, arr)
     # The 'arr' is guaranteed to be a JAX array here
     return arr.at[indices].set(values)
 
