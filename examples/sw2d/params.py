@@ -44,11 +44,15 @@ x0 = 27.5            # pulse center, 12.5 cm upstream of the bump
 U = np.sqrt(g/h_rest)*A   # velocity amplitude
 
 # Time integration
-# c = sqrt(g*h_rest) = 44.3 cm/s. The wave steepens as it travels: a simple wave shocks
-# after t_shock = s/(1.5*(A/h_rest)*c) = 0.36 s, and stays resolved on this grid until
-# roughly 0.8 of that. T = 0.28 s carries the crest 12.5 cm, clear of the bump, and stops
-# inside that limit. A narrow pulse shocks sooner than a wide one at the same amplitude,
-# so raising A much above 0.25 cm leaves no room to follow the wave past the bump.
+# c = sqrt(g*h_rest) = 44.3 cm/s. The crest rides deeper water than the base and so runs
+# 19% faster, shearing the wave forward until its leading face goes vertical. Whitham
+# (Linear and Nonlinear Waves, 1974, section 2.1) puts that gradient catastrophe at
+#     t_break = 2*h_rest / (3*c*|d(eta)/dx|_max) = 0.42 s
+# using the exact Gaussian maximum slope A*sqrt(2/e)/s. The run has to stop well before
+# it: the face narrows roughly as (1 - t/t_break), and the grid needs ~8 points across it,
+# which caps T near 0.35 s at this resolution. T = 0.28 s keeps a margin and still carries
+# the crest past the bump. Note dt does nothing for this -- the face narrows in x, so only
+# Nx helps, and only up to t_break, beyond which the solution is genuinely discontinuous.
 dt = 2e-5
 T = 0.28            # total simulated time (s)
 ostep = 200         # output step (71 snapshots, ~0.9 GB across the three fields)
