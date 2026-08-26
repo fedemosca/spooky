@@ -1,8 +1,15 @@
-# sw2d — 2D shallow water over a Gaussian bump
+# sw2d — 2D shallow water over topography
+
+Cases so far: `0` flat bottom, `1` an isolated Gaussian bump, `2` that same bump profile
+extended into a ridge across the full width. They share every other parameter, so they
+are comparable snapshot for snapshot. `1_short` is case 1 stopped at `T = 0.44` s, the
+resolved-front limit, for when only the trustworthy part of the run is wanted.
 
 ## Workflow
 
-One directory per run, under `outs/`, named with an integer. A case directory holds its
+One directory per run, under `outs/`. The name is free-form — an integer for a new
+setup, or a suffixed variant like `1_short` for a run that differs from an existing case
+in one parameter. A case directory holds its
 own `params.py` and every file the run produced, so the parameters that generated a
 result always sit next to the result.
 
@@ -85,20 +92,38 @@ case directory. It must define:
 |---|---|
 | Domain & grid | `Lx`, `Ly`, `Nx`, `Ny` |
 | Physical | `g`, `h_rest` |
-| Topography | `H0`, `R`, `xb`, `yb` |
-| Initial pulse | `A`, `s`, `n`, `x0`, `U` |
 | Time integration | `dt`, `T`, `ostep`, `bstep` |
 | Data flags | `make_data`, `noise`, `uum_noise_std`, `vvm_noise_std`, `hhm_noise_std`, `iit`, `iit0`, `iitN` |
+| Fields | `bathymetry(X, Y)`, `initial_fields(X, Y)` |
 
 **Do not set `out_path`, `hb_path` or `data_path`.** `time_marching.py` sets all three on
 the loaded module to the case directory it was given, so a `params.py` copied between
 cases can never redirect output into the wrong run. Anything written for those names in
 the file is discarded.
 
-The fields built from these are
+The two functions are where a case says what it actually simulates. `time_marching.py`
+calls them with the grid meshes `Xs, Ys` and uses whatever comes back, so it never knows
+what shape a case has and adding a case never touches it:
+
+- `bathymetry(X, Y)` returns `hb`, saved to `hb.npy`.
+- `initial_fields(X, Y)` returns `[u0, v0, h0]`, in the order `rkstep` expects.
+
+Any scalar the functions use — bump height, pulse width, whatever the case needs — is a
+module-level name in the same file, so the numbers stay readable at the top and the
+shapes stay explicit at the bottom. Nothing is required beyond the two functions, so
+case 0 simply has no topography parameters at all.
+
+The three current cases are
 
 ```
-hb    = H0*exp(-((X-xb)^2 + (Y-yb)^2)/R^2)
+outs/0   hb = 0
+outs/1   hb = H0*exp(-((X-xb)^2 + (Y-yb)^2)/R^2)      isolated bump
+outs/2   hb = H0*exp(-(X-xb)^2/R^2)                   that profile, extended in y
+```
+
+all three with the same initial state
+
+```
 pulse = exp(-((X-x0)/s)^n)
 h0    = h_rest + A*pulse        # free surface, offset by the rest height
 u0    = U*pulse
@@ -106,7 +131,7 @@ v0    = 0
 ```
 
 `h` is the free surface, not the water column: without the `h_rest` offset, `h - hb` goes
-negative over the bump and the run turns into NaNs.
+negative over the topography and the run turns into NaNs.
 
 Two derived quantities are worth checking by hand before submitting:
 

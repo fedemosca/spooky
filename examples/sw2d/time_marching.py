@@ -49,20 +49,14 @@ solver = SWHD_2D(grid, pm)
 
 Xs, Ys = grid.xx, grid.yy
 
-# Bottom topography
-hb = pm.H0*np.exp(-((Xs-pm.xb)**2 + (Ys-pm.yb)**2)/pm.R**2)
+# Both fields come from the case: this script knows only that params.py provides a
+# bathymetry and an initial state on the grid, never what shape either one has.
+hb = pm.bathymetry(Xs, Ys)
 np.save(f'{pm.hb_path}/hb.npy', hb)
 solver.update_hb(hb)
 solver.update_true_hb()
 
-# Initial conditions: super-Gaussian pulse travelling in +x. h is the free surface, so
-# it sits on top of the rest height: without that offset h-hb is negative over the bump,
-# the water column is unphysical and the run turns into NaNs.
-pulse = np.exp(-((Xs-pm.x0)/pm.s)**pm.n)
-h0 = pm.h_rest + pm.A*pulse
-u0 = pm.U*pulse
-v0 = np.zeros_like(Xs)
-fields = [u0, v0, h0]
+fields = pm.initial_fields(Xs, Ys)
 
 # Evolve
 fields = solver.evolve(fields, T=pm.T, bstep=pm.bstep, ostep=pm.ostep,

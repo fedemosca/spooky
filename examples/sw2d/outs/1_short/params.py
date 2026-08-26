@@ -1,5 +1,8 @@
 import numpy as np
 
+# Case 1 stopped at the resolved-front limit. Identical in every respect except T, so its
+# 111 snapshots are the leading 111 of case 1 and the two can be compared directly.
+
 # Domain and grid
 # The domain is periodic and purely numerical, so it matches neither the 170 x 70 cm tank
 # nor the 30 x 30 cm measurement window: it only has to hold the pulse, the bump and the
@@ -7,9 +10,8 @@ import numpy as np
 # dx = dy = 0.078 cm. The resolution is set by the steepened front, not the bump: the front
 # narrows to ~0.6 cm by t = 0.42 s, which is ~8 points here but only 4 at half this
 # resolution, too coarse for a spectral method and enough to ring. Note the measured front
-# sharpens as the grid refines, so 8 points is a floor, not a margin: the run continues to
-# T = 1 s past the point where the front is resolved, so treat anything after ~0.43 s as a
-# study of the breakdown rather than as a solution.
+# sharpens as the grid refines, so 8 points is a floor, not a margin: T is set to stop at
+# that limit rather than past it, which is the whole point of this case.
 Lx = 80.0            # domain size in x (cm)
 Ly = 40.0            # domain size in y (cm)
 Nx = 1024
@@ -53,15 +55,18 @@ U = np.sqrt(g/h_rest)*A   # velocity amplitude
 # near T = 0.43 s here. Note dt does nothing for this -- the face narrows in x, so only Nx
 # helps, and only up to t_break, beyond which the solution is genuinely discontinuous.
 #
-# T = 1 s runs deliberately well past that: the point is to watch how the simulation breaks
-# once the front is no longer resolved, so oscillations behind the crest after ~0.43 s are
-# the expected outcome, not a bug. The measured front confirms the estimate -- 18 points
-# across at t = 0.28 s, 7 at t = 0.42 s, 2 by t = 1 s. Use only the early snapshots for
-# anything quantitative. The crest reaches x ~ 74 cm by t = 1 s, still short of the
-# periodic edge at Lx = 80, so nothing wraps back into the region of interest.
+# This is where this case differs from outs/1: it stops at that limit instead of running
+# to 1 s, so every snapshot it holds is quantitative and none of them shows the ringing
+# that follows once the front goes under ~8 points. The measured front gives 7 points
+# across at t = 0.42 s, so 0.44 s sits right at the edge -- the last few snapshots are the
+# marginal ones and are worth checking rather than trusting. Use outs/1 to look at the
+# breakdown itself; use this case for anything measured.
+#
+# Unlike T = 1, this T divides dt exactly: Nt = 22000 with no truncation, 111 snapshots at
+# t = 0.004*k for k = 0..110, and the last one lands on t = 0.44 s exactly.
 dt = 2e-5
-T = 1               # total simulated time (s)
-ostep = 200         # output step (250 snapshots, ~3.1 GB across the three fields)
+T = 0.44            # total simulated time (s), at the resolved-front limit
+ostep = 200         # output step (111 snapshots, ~1.4 GB across the three fields)
 bstep = 50          # balance step
 
 # No paths here: time_marching.py sets out_path, hb_path and data_path to the case

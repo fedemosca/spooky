@@ -1,8 +1,13 @@
 # SWHD_2D Simulation — Parameter Reference
 
-Case `outs/1`. Mirrors the `params.py` in this directory and `time_marching.py`.
+Case `outs/1_short`. Mirrors the `params.py` in this directory and `time_marching.py`.
 Everything below is either read from `params.py` or built in `time_marching.py`; nothing
 here is an attribute of `SWHD_2D` unless the table says so.
+
+This is **case 1 truncated at the resolved-front limit**: the same bump, the same initial
+state and the same grid, stopped at `T = 0.44` s instead of 1 s. Its 111 snapshots are
+the leading 111 of `outs/1`, so the two are directly comparable; this case just holds
+none of the post-breakdown ones.
 
 ## 1. Domain & Grid
 
@@ -69,24 +74,30 @@ Fields are handed to the solver as `fields = [u0, v0, h0]`, matching
 | Parameter | Value | Meaning |
 |---|---|---|
 | `dt` | 2e-5 | timestep (s) |
-| `T` | 1 | total simulated time (s) |
+| `T` | 0.44 | total simulated time (s) |
 | `ostep` | 200 | steps between saved snapshots |
 | `bstep` | 50 | steps between balance writes |
 | `rkord` | 2 | Runge-Kutta order, `SWHD_2D` constructor default |
-| `Nt` (derived) | 49 999 | `int(T/dt)`, **not** 50 000 — `2e-5` is above its decimal value in binary, so `1/2e-5` falls just short and truncates down |
-| `total_steps` (derived) | 50 000 | `int(T/dt) + 1` |
-| snapshots saved (derived) | 250 | `(total_steps - 1)//ostep + 1`, length of `uus`/`vvs`/`hhs` |
-| snapshot memory (derived) | ≈ 3.1 GB | 250 × 1024 × 512 × 8 B × 3 fields |
-| balance rows (derived) | 1001 | steps 0, 50, …, 49 950 plus the final write at step 49 999 |
+| `Nt` (derived) | 22 000 | `int(T/dt)`, exactly — unlike case 1, `0.44/2e-5` lands on 22 000.0 in binary, so nothing truncates |
+| `total_steps` (derived) | 22 001 | `int(T/dt) + 1` |
+| snapshots saved (derived) | 111 | `(total_steps - 1)//ostep + 1`, length of `uus`/`vvs`/`hhs` |
+| snapshot memory (derived) | ≈ 1.4 GB | 111 × 1024 × 512 × 8 B × 3 fields |
+| balance rows (derived) | 442 | steps 0, 50, …, 22 000 (441 rows) plus the `final=True` write, also at step 22 000 |
 | CFL number (derived) | ≈ 1.13 × 10⁻² | `c·dt/dx` |
 
-Snapshot `k` is the field at step `k·ostep`, i.e. `t = 0.004·k`, for `k = 0…248`. The last
-slot is written twice — once at step 49 800 and again by the `final=True` write at step
-49 999 — so slot 249 holds `t = 0.99998`, not `t = 0.996`.
+Snapshot `k` is the field at step `k·ostep`, i.e. `t = 0.004·k`, for `k = 0…110`, and
+`k = 110` is `t = 0.44` s exactly. Slot 110 is written twice with the same field — once
+in the loop at step 22 000 and again by the `final=True` write at that same step — so
+unlike case 1 there is no odd last time label; the duplicate is a no-op. The same is true
+of the last row of `balance.dat`, which repeats `t = 0.44`.
 
-`T = 1` s deliberately overruns the resolved-front limit. The crest rides deeper water
-than the base and shears the wave forward until its leading face goes vertical; Whitham
-(*Linear and Nonlinear Waves*, 1974, §2.1) puts that gradient catastrophe at
+Since `T` here is a multiple of `dt`, the `dt = T - Nt·dt` short final step is zero and
+`evolve` breaks out rather than taking it. The `make_data` dump fires because the loop
+reaches `step == total_steps - 1`.
+
+`T = 0.44` s stops at the resolved-front limit rather than past it. The crest rides deeper
+water than the base and shears the wave forward until its leading face goes vertical;
+Whitham (*Linear and Nonlinear Waves*, 1974, §2.1) puts that gradient catastrophe at
 
 ```
 t_break = 2·h_rest / (3·c·|dη/dx|_max) = 0.53 s
@@ -94,16 +105,19 @@ t_break = 2·h_rest / (3·c·|dη/dx|_max) = 0.53 s
 
 using the exact Gaussian maximum slope `A·sqrt(2/e)/s = 0.0572 cm⁻¹`. The face narrows
 roughly as `(1 - t/t_break)`, and the grid needs ~8 points across it, which caps a
-trustworthy run near `t = 0.43` s. Measured from `hhms.npy`, the front spans 45 points at
-`t = 0`, 18 at `t = 0.28` s, 7 at `t = 0.42` s and 2 by `t = 1` s — close agreement with
-the estimate.
+trustworthy run near `t = 0.43` s. Measured on case 1's `hhms.npy`, the front spans 45
+points at `t = 0`, 18 at `t = 0.28` s and 7 at `t = 0.42` s — close agreement with the
+estimate, and the reason `T` is set here rather than at some round number.
 
-Running to 1 s is how the breakdown is observed: ringing behind the crest after ~0.43 s is
-expected, and only the early snapshots are usable quantitatively. Note `dt` does nothing
-for this — the face narrows in `x`, so only `Nx` helps, and only up to `t_break`, beyond
-which the solution is genuinely discontinuous. The crest reaches `x ≈ 74` cm by `t = 1` s,
-short of the periodic edge at `Lx = 80`, so nothing wraps back into the region of
-interest.
+`T = 0.44` s sits right at that edge, so the last handful of snapshots are the marginal
+ones: check them rather than assume them. Everything before ~0.42 s is comfortably
+resolved. Note `dt` does nothing for this — the face narrows in `x`, so only `Nx` helps,
+and only up to `t_break`, beyond which the solution is genuinely discontinuous.
+
+Use `outs/1` to look at how the scheme breaks down past this point; use this case for
+anything measured. Scaling case 1's crest travel (27.5 → ≈ 74 cm over 1 s) the crest is
+near `x ≈ 48` cm at `t = 0.44` s — just past the bump, and far from the periodic edge at
+`Lx = 80`.
 
 ## 6. Data / Assimilation Flags
 
@@ -119,7 +133,7 @@ Read by `SWHD_2D.__init__`; only `make_data` affects this forward run.
 ## 7. Paths & Output
 
 `out_path`, `hb_path` and `data_path` are not set in `params.py`: `time_marching.py`
-sets all three to the case directory it was given, which for this run is `./outs/1`.
+sets all three to the case directory it was given, which for this run is `./outs/1_short`.
 
 | Field | Storage attr | File |
 |---|---|---|
