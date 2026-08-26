@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Submit with ./submit.sh <case_dir>, which passes CASE in and redirects the log into
-# that directory. The -o below is only the fallback for a bare `sbatch job.sh`, which
-# fails on the CASE check anyway.
+# Submit with ./submit.sh <case_dir>, which passes CASE in, names the job after the case
+# and redirects the log into that directory. The -J and -o below are only fallbacks for a
+# bare `sbatch job.sh`, which fails on the CASE check anyway.
 
 #SBATCH -J sw2d
 #SBATCH -N 1

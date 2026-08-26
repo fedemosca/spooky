@@ -2,8 +2,9 @@
 
 Cases so far: `0` flat bottom, `1` an isolated Gaussian bump, `2` that same bump profile
 extended into a ridge across the full width. They share every other parameter, so they
-are comparable snapshot for snapshot. `1_short` is case 1 stopped at `T = 0.44` s, the
-resolved-front limit, for when only the trustworthy part of the run is wanted.
+are comparable snapshot for snapshot. `1_short` and `2_short` are cases 1 and 2 stopped
+near the resolved-front limit — `T = 0.44` and `T = 0.46` s — for when only the
+trustworthy part of the run is wanted.
 
 ## Workflow
 

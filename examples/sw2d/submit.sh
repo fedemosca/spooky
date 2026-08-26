@@ -20,6 +20,10 @@ if [[ ! -f "$case_dir/params.py" ]]; then
     exit 1
 fi
 
+# The job is named after the case -- sw0, sw1, sw1_short -- so squeue tells the runs
+# apart. Same reason as the log path: -J in job.sh cannot see $CASE.
+case_name="$(basename "$case_dir")"
+
 # %j keeps one log per job: re-running a case leaves the earlier log in place instead of
 # overwriting it. SLURM opens this file itself, so the directory must already exist.
-sbatch --export=ALL,CASE="$case_dir" -o "$case_dir/sw2d-%j.out" job.sh
+sbatch --export=ALL,CASE="$case_dir" -J "sw$case_name" -o "$case_dir/sw2d-%j.out" job.sh
