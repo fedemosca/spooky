@@ -4,12 +4,12 @@ import numpy as np
 # The domain is periodic and purely numerical, so it matches neither the 170 x 70 cm tank
 # nor the 30 x 30 cm measurement window: it only has to hold the pulse, the bump and the
 # travel distance without anything wrapping into the region of interest. Square cells,
-# dx = dy = 0.078 cm. The resolution is set by the steepened front, not the bump: the
-# front narrows to ~0.6 cm by the end of the run, which is ~8 points here but only 4 at
-# half this resolution, too coarse for a spectral method and enough to ring. Note the
-# measured front sharpens as the grid refines, so 8 points is a floor, not a margin: if
-# the production run shows oscillations behind the crest, shorten T rather than trusting
-# the late snapshots.
+# dx = dy = 0.078 cm. The resolution is set by the steepened front, not the bump: the front
+# narrows to ~0.6 cm by t = 0.42 s, which is ~8 points here but only 4 at half this
+# resolution, too coarse for a spectral method and enough to ring. Note the measured front
+# sharpens as the grid refines, so 8 points is a floor, not a margin: the run continues to
+# T = 1 s past the point where the front is resolved, so treat anything after ~0.43 s as a
+# study of the breakdown rather than as a solution.
 Lx = 80.0            # domain size in x (cm)
 Ly = 40.0            # domain size in y (cm)
 Nx = 1024
@@ -37,27 +37,36 @@ yb = Ly/2
 # also weakens the measurement: the 5 cm bump is already well below the wavelength, so
 # lengthening the wave cuts the deformation being measured. At s=3 the peak leaves the
 # bump at 109% of A; widening buys accuracy that the experiment cannot resolve.
-A = 0.25             # height amplitude (cm)
+A = 0.2             # height amplitude (cm)
 s = 3.0              # half-length: the surface hump is ~3s = 9 cm across
 n = 2                # exponent
 x0 = 27.5            # pulse center, 12.5 cm upstream of the bump
 U = np.sqrt(g/h_rest)*A   # velocity amplitude
 
 # Time integration
-# c = sqrt(g*h_rest) = 44.3 cm/s. The wave steepens as it travels: a simple wave shocks
-# after t_shock = s/(1.5*(A/h_rest)*c) = 0.36 s, and stays resolved on this grid until
-# roughly 0.8 of that. T = 0.28 s carries the crest 12.5 cm, clear of the bump, and stops
-# inside that limit. A narrow pulse shocks sooner than a wide one at the same amplitude,
-# so raising A much above 0.25 cm leaves no room to follow the wave past the bump.
+# c = sqrt(g*h_rest) = 44.3 cm/s. The crest rides deeper water than the base and so runs
+# faster, shearing the wave forward until its leading face goes vertical. Whitham (Linear
+# and Nonlinear Waves, 1974, section 2.1) puts that gradient catastrophe at
+#     t_break = 2*h_rest / (3*c*|d(eta)/dx|_max) = 0.53 s
+# using the exact Gaussian maximum slope A*sqrt(2/e)/s. The face narrows roughly as
+# (1 - t/t_break), and the grid needs ~8 points across it, which caps a trustworthy run
+# near T = 0.43 s here. Note dt does nothing for this -- the face narrows in x, so only Nx
+# helps, and only up to t_break, beyond which the solution is genuinely discontinuous.
+#
+# T = 1 s runs deliberately well past that: the point is to watch how the simulation breaks
+# once the front is no longer resolved, so oscillations behind the crest after ~0.43 s are
+# the expected outcome, not a bug. The measured front confirms the estimate -- 18 points
+# across at t = 0.28 s, 7 at t = 0.42 s, 2 by t = 1 s. Use only the early snapshots for
+# anything quantitative. The crest reaches x ~ 74 cm by t = 1 s, still short of the
+# periodic edge at Lx = 80, so nothing wraps back into the region of interest.
 dt = 2e-5
-T = 0.28            # total simulated time (s)
-ostep = 200         # output step (71 snapshots, ~0.9 GB across the three fields)
+T = 1               # total simulated time (s)
+ostep = 200         # output step (250 snapshots, ~3.1 GB across the three fields)
 bstep = 50          # balance step
 
-# Paths
-out_path = './'
-data_path = './'
-hb_path = './'
+# No paths here: time_marching.py sets out_path, hb_path and data_path to the case
+# directory this file was loaded from, so a params.py copied between cases can never
+# redirect output into the wrong run.
 
 # Data generation / assimilation flags (used by SWHD_2D)
 make_data = True

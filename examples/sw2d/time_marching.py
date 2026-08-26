@@ -1,8 +1,16 @@
 '''
 2D Shallow water equations over a Gaussian bump
+
+Usage: python3 time_marching.py ./outs/1
+
+The case directory must already exist and hold a params.py. Every output of the run is
+written back into it, so the parameters that produced a run always sit beside it.
 '''
 
 import os
+import sys
+import importlib.util
+
 import numpy as np
 import matplotlib
 # matplotlib.use('Agg')
@@ -11,9 +19,30 @@ import matplotlib.pyplot as plt
 import spooky as sp
 from spooky.solvers import SWHD_2D
 
-import params as pm
 
-os.makedirs(pm.out_path, exist_ok=True)
+def load_params(case_dir: str):
+    ''' Imports <case_dir>/params.py and points its output paths at <case_dir>. '''
+    if not os.path.isdir(case_dir):
+        raise SystemExit(f'case directory not found: {case_dir}')
+    params_file = os.path.join(case_dir, 'params.py')
+    if not os.path.isfile(params_file):
+        raise SystemExit(f'no params.py in {case_dir}')
+
+    spec = importlib.util.spec_from_file_location('params', params_file)
+    pm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pm)
+
+    # The case owns its directory: the run lands here no matter what the case file says,
+    # so copying a params.py between cases can never redirect output to the wrong run.
+    pm.out_path = pm.hb_path = pm.data_path = case_dir
+    return pm
+
+
+if len(sys.argv) != 2:
+    raise SystemExit(f'usage: {sys.argv[0]} <case_dir>')
+
+case_dir = os.path.normpath(sys.argv[1])
+pm = load_params(case_dir)
 
 grid = sp.Grid2D(Lx=pm.Lx, Ly=pm.Ly, Nx=pm.Nx, Ny=pm.Ny, dt=pm.dt)
 solver = SWHD_2D(grid, pm)
