@@ -1,0 +1,10 @@
+# JAX with CUDA 12 support — pulls the nvidia-* CUDA wheels itself
+jax[cuda12]>=0.4.30
+
+# spooky's own dependencies
+numpy
+scipy
+matplotlib
+
+# ffmpeg binary for the sw2d example's video.py; the cluster has none on PATH
+imageio-ffmpeg
