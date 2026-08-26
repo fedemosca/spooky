@@ -2,3 +2,7 @@
 *.npy
 *.png
 balance.dat
+
+# Renders and job logs - regenerable with video.py / resubmitting the case
+*.mp4
+*.out
