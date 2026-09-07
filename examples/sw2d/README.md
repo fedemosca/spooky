@@ -6,6 +6,11 @@ are comparable snapshot for snapshot. `1_short` and `2_short` are cases 1 and 2 
 near the resolved-front limit — `T = 0.44` and `T = 0.46` s — for when only the
 trustworthy part of the run is wanted.
 
+`3_short` is `2_short` with a richer bar: the ridge becomes a Gaussian-enveloped sum of
+two cosines, one long and one short, renormalized to the same 1 cm crest. Everything else
+is copied from `2_short`, so the two are directly comparable — but note the wider envelope
+gives it a larger along-x footprint than cases 1 and 2, which share one.
+
 ## Workflow
 
 One directory per run, under `outs/`. The name is free-form — an integer for a new
@@ -114,15 +119,24 @@ module-level name in the same file, so the numbers stay readable at the top and 
 shapes stay explicit at the bottom. Nothing is required beyond the two functions, so
 case 0 simply has no topography parameters at all.
 
-The three current cases are
+The four current bathymetries are
 
 ```
-outs/0   hb = 0
-outs/1   hb = H0*exp(-((X-xb)^2 + (Y-yb)^2)/R^2)      isolated bump
-outs/2   hb = H0*exp(-(X-xb)^2/R^2)                   that profile, extended in y
+outs/0         hb = 0
+outs/1         hb = H0*exp(-((X-xb)^2 + (Y-yb)^2)/R^2)     isolated bump
+outs/2         hb = H0*exp(-(X-xb)^2/R^2)                  that profile, extended in y
+outs/3_short   hb = H0*env*(a1*cos(2pi*X'/L1)
+                            + a2*cos(2pi*X'/L2))/(a1+a2)   two cosines under a Gaussian
+                    env = exp(-X'^2/R^2), X' = X - xb       envelope, uniform in y
 ```
 
-all three with the same initial state
+Case 3's crest is normalized by `a1 + a2` rather than by the sampled maximum: both cosines
+are 1 at `X = xb`, so that sum *is* the analytic maximum and the crest lands on `H0`
+exactly, whatever the grid. The cosines go negative off-crest, so the bar is flanked by
+shallow trenches — the bottom dips below the far-field level there, which no other case
+does.
+
+all four with the same initial state
 
 ```
 pulse = exp(-((X-x0)/s)^n)
